@@ -1,0 +1,154 @@
+#!/bin/bash
+HT_BASE_DIR=$(dirname $(readlink -f ${BASH_SOURCE[0]}));
+
+HT_COMPILE_DIR=$HT_BASE_DIR/compiled
+HT_LOG_DIR=$HT_BASE_DIR/logs
+HT_TARBALL_DIR=$HT_BASE_DIR/tarballs
+HT_UNPACKED_DIR=$HT_BASE_DIR/unpacked
+
+HT_APR_TAR=$HT_TARBALL_DIR/apr-1.4.6.tar.gz
+HT_APR_LOG=$HT_LOG_DIR/apr
+HT_APR_SRC=$HT_UNPACKED_DIR/apr
+HT_APR_BLD=$HT_COMPILE_DIR/apr
+
+HT_APR_UTIL_TAR=$HT_TARBALL_DIR/apr-util-1.5.1.tar.gz
+HT_APR_UTIL_LOG=$HT_LOG_DIR/apr-util
+HT_APR_UTIL_SRC=$HT_UNPACKED_DIR/apr-util
+HT_APR_UTIL_BLD=$HT_COMPILE_DIR/apr-util
+
+HT_PCRE_TAR=$HT_TARBALL_DIR/pcre-8.21.tar.gz
+HT_PCRE_LOG=$HT_LOG_DIR/pcre
+HT_PCRE_SRC=$HT_UNPACKED_DIR/pcre
+HT_PCRE_BLD=$HT_COMPILE_DIR/pcre
+
+HT_HTTPD_TAR=$HT_TARBALL_DIR/httpd-2.4.3.tar.gz
+HT_HTTPD_LOG=$HT_LOG_DIR/httpd
+HT_HTTPD_SRC=$HT_UNPACKED_DIR/httpd
+HT_HTTPD_BLD=$HT_COMPILE_DIR/httpd
+HT_HTTPD_CONF=$HT_HTTPD_BLD/conf/httpd.conf
+
+HT_JK_TAR=$HT_TARBALL_DIR/tomcat-connectors-1.2.37-src.tar.gz
+HT_JK_LOG=$HT_LOG_DIR/jk
+HT_JK_SRC=$HT_UNPACKED_DIR/jk
+HT_JK_BLD=$HT_COMPILE_DIR/jk
+
+outputBldMsg()
+{
+   if [ -n "$1" ];then
+      echo -e "Building $1...";
+   fi
+}
+clean()
+{
+   if [ -n "$1" ] && [ -n "$HT_BASE_DIR" ] && [ ! -L $1 ];then
+      rm -rf $1;
+   fi
+}
+unpack()
+{
+   if [ -f $1 ];then
+      clean $2;
+      mkdir $2;
+      tar -zxvf $1 -C $2 --strip-components=1 > $3 2>&1;
+   fi
+}
+fail()
+{
+   echo -e "$1";
+   exit 1;
+}
+buildApr()
+{
+   outputBldMsg "apr"
+   clean $HT_APR_SRC;
+   clean $HT_APR_BLD;
+
+   unpack  $HT_APR_TAR $HT_APR_SRC $HT_APR_LOG;
+   cd $HT_APR_SRC;
+   ./configure --prefix=$HT_APR_BLD >> $HT_APR_LOG 2>& 1    && {
+   make                             >> $HT_APR_LOG 2>& 1; } && {
+   make install                     >> $HT_APR_LOG 2>& 1; } || {
+      fail "apr";  
+   }
+}
+buildAprUtil()
+{
+   outputBldMsg "apr util"
+   clean $HT_APR_UTIL_SRC;
+   clean $HT_APR_UTIL_BLD;
+
+   unpack  $HT_APR_UTIL_TAR $HT_APR_UTIL_SRC $HT_APR_UTIL_LOG;
+   cd $HT_APR_UTIL_SRC;
+   ./configure \
+      --prefix=$HT_APR_UTIL_BLD \
+      --with-apr=$HT_APR_BLD        >> $HT_APR_UTIL_LOG 2>& 1    && {
+   make                             >> $HT_APR_UTIL_LOG 2>& 1; } && {
+   make install                     >> $HT_APR_UTIL_LOG 2>& 1; } || {
+      fail "apr util";  
+   }
+}
+buildPCRE()
+{
+   outputBldMsg "pcre"
+   clean $HT_PCRE_SRC;
+   clean $HT_PCRE_BLD;
+
+   unpack  $HT_PCRE_TAR $HT_PCRE_SRC $HT_PCRE_LOG;
+   cd $HT_PCRE_SRC;
+   ./configure \
+      --prefix=$HT_PCRE_BLD         >> $HT_PCRE_LOG 2>& 1    && {
+   make                             >> $HT_PCRE_LOG 2>& 1; } && {
+   make install                     >> $HT_PCRE_LOG 2>& 1; } || {
+      fail "pcre";  
+   }
+}
+buildJK()
+{
+   outputBldMsg "jk"
+   clean $HT_JK_SRC;
+   clean $HT_JK_BLD;
+
+   unpack  $HT_JK_TAR $HT_JK_SRC $HT_JK_LOG;
+   cd $HT_JK_SRC/native;
+   ./configure \
+      --with-apr=$HT_APR_BLD \
+      --with-apxs=$HT_HTTPD_BLD/bin/apxs \
+      --prefix=$HT_JK_BLD           >> $HT_JK_LOG 2>& 1    && {
+   make                             >> $HT_JK_LOG 2>& 1; } && {
+   make install                     >> $HT_JK_LOG 2>& 1; } && {
+cat >> $HT_HTTPD_CONF <<EOF
+<IfModule jk_module>
+JkLogFile "logs/mod_jk.log"
+JkShmFile "logs/jk_runtime_status"
+</IfModule>
+EOF
+   } || {
+      fail "jk";  
+   }
+}
+
+buildHttpd()
+{
+   outputBldMsg "httpd"
+   clean $HT_HTTPD_SRC;
+   clean $HT_HTTPD_BLD;
+
+   unpack  $HT_HTTPD_TAR $HT_HTTPD_SRC $HT_HTTPD_LOG;
+   cd $HT_HTTPD_SRC;
+   $HT_HTTPD_SRC/configure \
+      --prefix=$HT_HTTPD_BLD \
+      --with-apr=$HT_APR_BLD \
+      --with-apr-util=$HT_APR_UTIL_BLD \
+      --with-pcre=$HT_PCRE_BLD      >> $HT_HTTPD_LOG 2>& 1    && {
+   make                             >> $HT_HTTPD_LOG 2>& 1; } && {
+   make install                     >> $HT_HTTPD_LOG 2>& 1; } || {
+      fail "httpd";  
+   }
+}
+
+
+buildApr
+buildAprUtil
+buildPCRE
+buildHttpd
+buildJK
