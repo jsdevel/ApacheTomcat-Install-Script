@@ -146,6 +146,9 @@ buildHttpd()
    }
 }
 
+if [ ! -d $HT_LOG_DIR ];then
+   mkdir -p $HT_LOG_DIR;
+fi
 
 buildApr
 buildAprUtil
